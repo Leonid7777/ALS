@@ -5,7 +5,6 @@
 #include <complex>
 
 
-
 extern "C"
 {
     double dznrm2_(const int *, const std::complex<double> *, const int *);
@@ -64,7 +63,7 @@ create_S_T(std::complex<double>** matrices, int busy_side, int rank, int N, int*
 {
     
 
-    long long* multipliers = new long long[N + 1];
+    int* multipliers = new int[N + 1];
 
     multipliers[N] = 1;
     for(int i = N - 1; i >= 0; i--) {
@@ -76,8 +75,8 @@ create_S_T(std::complex<double>** matrices, int busy_side, int rank, int N, int*
         multipliers[i] = multipliers[i + 1];
     }
 
-    long long* mas = new long long[N];
-    long long* mas_razm = new long long[N];
+    int* mas = new int[N];
+    int* mas_razm = new int[N];
 
     for(int i = 0; i < N + 1; i++) {
         if(i < busy_side) {
