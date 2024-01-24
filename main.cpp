@@ -3,37 +3,78 @@
 #include <ctime>
 #include <cmath>
 
+
+
 extern "C"
 {
     double dnrm2_(const int *, const double *, const int *);
     void dgels_(const char *, const int *, const int *, const int *, double *, const int *, double *, const int *, double *, const int *, int *);
 }
 
+
 void
 tensor_make(double** tensor, long long length)
 {
     *tensor = new double[length];
     for (int i = 0; i < length; i++) {
-        (*tensor)[i] = 1.0 / (i + 1);
+        (*tensor)[i] = -1.0 + 2.0 * double(std::rand()) / RAND_MAX;
+    }
+}
+
+double 
+gen_func(int k, int *razm, int N)
+{
+    int *b = new int[N];
+    int m = 0;
+    b[N - 1] = k % razm[N - 1];
+    k = (k - b[N - 1]) / razm[N - 1];
+    m = b[N - 1];
+    for (int i = N - 2; i >= 0; i--)
+    {
+        b[i] = k % razm[i];
+        k = (k - b[i]) / razm[i];
+        m = m + b[i];
+    }
+    return std::sin(m);
+}
+void
+tensor_make_not_random(double** tensor, int *razm, int length, int N)
+{
+    *tensor = new double[length];
+    for (int i = 0; i < length; i++) {
+        (*tensor)[i] = gen_func(i, razm, N);
     }
 }
 
 void
 create_matrix(double* &matrix, long long razm, int rank)
 {
-    std::srand(std::time(nullptr));
     matrix = new double[razm * rank];
     for(int r = 0; r < rank; r++) {
         for(int row = 0; row < razm; row++) {
-            matrix[row + r * razm] = double(std::rand()) / RAND_MAX;
+            matrix[row + r * razm] = -1.0 + 2.0 * double(std::rand()) / RAND_MAX;
         }
     }
 }
 
-double*
-create_S(long long length, double** matrices, int busy_side, int rank, int N, int* razm)
+
+void
+create_S_T(double** matrices, int busy_side, int rank, int N, int* razm, double* S, double* res, double* tensor)
 {
-    double* S = new double[length * rank];
+    
+
+    long long* multipliers = new long long[N + 1];
+
+    multipliers[N] = 1;
+    for(int i = N - 1; i >= 0; i--) {
+        multipliers[i] = multipliers[i + 1] * razm[i + 1];
+    }
+
+    long long busy_multipliers = multipliers[busy_side];
+    for(int i = busy_side; i < N; i++) {
+        multipliers[i] = multipliers[i + 1];
+    }
+
     long long* mas = new long long[N];
     long long* mas_razm = new long long[N];
 
@@ -47,9 +88,12 @@ create_S(long long length, double** matrices, int busy_side, int rank, int N, in
         }
     }
 
-    long long count = 0;
+    long long count = 0, tensor_val = 0;
+    double val;
 
-    for(long long r = 0; r < rank; r++) {
+    long long max_r = std::max(rank, razm[busy_side]);
+
+    for(long long r = 0; r < max_r; r++) {
 
         for(int pas = 0; pas < N; pas++) {
             mas[pas] = 0;
@@ -58,92 +102,34 @@ create_S(long long length, double** matrices, int busy_side, int rank, int N, in
         while(mas[0] < mas_razm[0]) {
             while(mas[N - 1] < mas_razm[N - 1]) {
 
-                double val = 1;
+                if(r < rank) {
 
-                for(int j = 0; j < N + 1; j++) {
-                    if(j < busy_side) {
-                        val *= matrices[j][r * mas_razm[j] + mas[j]];
-                    } else if(j > busy_side) {
-                        val *= matrices[j][r * mas_razm[j - 1] + mas[j - 1]];
-                    } else {
-                        continue;
+                    val = 1;
+                    
+                    for(int j = 0; j < N + 1; j++) {
+                        if(j < busy_side) {
+                            val *= matrices[j][r * mas_razm[j] + mas[j]];
+                        } else if(j > busy_side) {
+                            val *= matrices[j][r * mas_razm[j - 1] + mas[j - 1]];
+                        } else {
+                            continue;
+                        }
                     }
+
+                    S[count] = val;
                 }
 
-                S[count] = val;
-                count++;
+                if(r < razm[busy_side]) {
 
+                    tensor_val = r * busy_multipliers;
 
-                mas[N - 1]++;
-            }
+                    for(int i = 0; i < N; i++) {
+                        tensor_val += mas[i] * multipliers[i];
+                    }
 
-            for(int i = N - 1; i >= 1; i--) {
-                if(mas[i] >= mas_razm[i]) {
-                    mas[i - 1]++;
-                    mas[i] = 0;
-                }
-            }
-        }
-
-
-    }
-    return S;
-}
-
-double*
-create_T(double* tensor, long long length, int* razm, int busy_side, int N)
-{
-    
-    double *res = new double[length];
-
-
-    long long* multipliers = new long long[N + 1];
-
-    multipliers[0] = 1;
-    for(int i = 1; i < N + 1; i++) {
-        multipliers[i] = multipliers[i - 1] * razm[i - 1];
-    }
-
-    long long busy_multipliers = multipliers[busy_side];
-    for(int i = busy_side; i < N; i++) {
-        multipliers[i] = multipliers[i + 1];
-    }
-
-    double* mas = new double[N];
-    double* mas_razm = new double[N];
-
-    for(int i = 0; i < N + 1; i++) {
-        if(i < busy_side) {
-            mas_razm[i] = razm[i];
-        } else if(i > busy_side) {
-            mas_razm[i - 1] = razm[i];
-        } else {
-            continue;
-        }
-    }
-
-    for(int i = 0; i < N; i++) {
-        std::cout << mas_razm[i] << " ";
-    }
-    std::cout << std::endl;
-
-    long long count = 0, val;
-
-    for(int r = 0; r < razm[busy_side]; r++) {
-
-        for(int pas = 0; pas < N; pas++) {
-            mas[pas] = 0;
-        }
-
-        while(mas[0] < mas_razm[0]) {
-            while(mas[N - 1] < mas_razm[N - 1]) {
-                val = r * busy_multipliers;
-
-                for(int i = 0; i < N; i++) {
-                    val += mas[i] * multipliers[i];
+                    res[count] = tensor[tensor_val];
                 }
 
-                res[count] = tensor[val];
                 count++;
                 mas[N - 1]++;
             }
@@ -156,13 +142,12 @@ create_T(double* tensor, long long length, int* razm, int busy_side, int N)
             }
         }
     }
-
-    return res;
 }
 
 int
 main(void)
 {
+    std::srand(std::time(nullptr)); 
     int N, rank;
     long long length = 1;
     std::cout << "Введите количество размерностей тензора: ";
@@ -176,13 +161,22 @@ main(void)
     std::cout << "Введите ранг: ";
     std::cin >> rank;
     double* tensor;
-    tensor_make(&tensor, length);
 
     double** matrices = new double*[N];
 
     for(int i = 0; i < N; i++) {
         create_matrix(matrices[i], razm[i], rank);
     }
+
+    // tensor_make_not_random(&tensor, razm, length, N);
+    tensor_make(&tensor, length);
+    
+    for(int i = 0; i < N; i++) {
+        delete[] matrices[i];
+        create_matrix(matrices[i], razm[i], rank);
+    }
+
+    std::cout << std::endl << std::endl;
 
     int szfull = length;
     int ione = 1;
@@ -194,7 +188,8 @@ main(void)
     int leftsize_trunc;
 
     double right_side_norm;
-    double relative_residual = 1.0;
+    double relative_residual = 1.0, end_relative_residual = 2.0;
+    double diffrent = end_relative_residual - relative_residual;
 
     right_side_norm = dnrm2_(&szfull, tensor, &ione);
 
@@ -205,17 +200,18 @@ main(void)
 
 
 
-    while(relative_residual > 1.0e-3 && iteration < 10000)
+    while(diffrent  > 1.0e-8 && iteration < 100000)
     {
+        end_relative_residual = relative_residual;
         iteration++;
 
         for(int i = 0; i < N; i++) {
-            S = create_S(length / razm[i], matrices, i, rank, N - 1, razm);
-            T = create_T(tensor, length, razm, i, N - 1);
+            S = new double[length / razm[i] * rank];
+            T = new double[length];
+            create_S_T(matrices, i, rank, N - 1, razm, S, T, tensor);
             
             leftsize = length / razm[i];
             dgels_(&cN, &leftsize, &rank, &(razm[i]), S, &leftsize, T, &leftsize, work, &lwork, &info);
-            std::cout << "info: " << info << std::endl;
 
             relative_residual = 0.0;
             leftsize_trunc = leftsize - rank;
@@ -228,13 +224,6 @@ main(void)
             }
             relative_residual = sqrt(relative_residual) / right_side_norm;
 
-
-
-
-
-
-
-
             for(int r = 0; r < rank; r++) {
                 for(int j = 0; j < razm[i]; j++) {
                     matrices[i][r * razm[i] + j] = T[j * leftsize + r];
@@ -244,10 +233,13 @@ main(void)
             delete[] S;
             delete[] T;
 
-            std::cout << "Residual norm: " << relative_residual << std::endl;
+        }
+        diffrent = end_relative_residual - relative_residual;
+        if(iteration % 1000 == 0) {
+            std::cout << diffrent << std::endl;
         }
     }
-
-
+    std::cout << "Residual norm: " << relative_residual << std::endl;
     return 0;
 }
+
