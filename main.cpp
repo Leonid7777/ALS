@@ -2,22 +2,23 @@
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
+#include <complex>
 
 
 
 extern "C"
 {
-    double dnrm2_(const int *, const double *, const int *);
-    void dgels_(const char *, const int *, const int *, const int *, double *, const int *, double *, const int *, double *, const int *, int *);
+    double dznrm2_(const int *, const std::complex<double> *, const int *);
+    void zgels_(const char *, const int *, const int *, const int *, std::complex<double> *, const int *, std::complex<double> *, const int *, std::complex<double> *, const int *, int *);
 }
 
 
 void
-tensor_make(double** tensor, long long length)
+tensor_make(std::complex<double>** tensor, long long length)
 {
-    *tensor = new double[length];
+    *tensor = new std::complex<double>[length];
     for (int i = 0; i < length; i++) {
-        (*tensor)[i] = -1.0 + 2.0 * double(std::rand()) / RAND_MAX;
+        (*tensor)[i] = -1.0 + 2.0 * double(std::rand()) / RAND_MAX - (1.0 + 2.0 * double(std::rand()) / RAND_MAX) * i;
     }
 }
 
@@ -38,18 +39,18 @@ gen_func(int k, int *razm, int N)
     return std::sin(m);
 }
 void
-tensor_make_not_random(double** tensor, int *razm, int length, int N)
+tensor_make_not_random(std::complex<double>** tensor, int *razm, int length, int N)
 {
-    *tensor = new double[length];
+    *tensor = new std::complex<double>[length];
     for (int i = 0; i < length; i++) {
-        (*tensor)[i] = gen_func(i, razm, N);
+        (*tensor)[i] = gen_func(i, razm, N) + gen_func(i, razm, N) * i;
     }
 }
 
 void
-create_matrix(double* &matrix, long long razm, int rank)
+create_matrix(std::complex<double>* &matrix, long long razm, int rank)
 {
-    matrix = new double[razm * rank];
+    matrix = new std::complex<double>[razm * rank];
     for(int r = 0; r < rank; r++) {
         for(int row = 0; row < razm; row++) {
             matrix[row + r * razm] = -1.0 + 2.0 * double(std::rand()) / RAND_MAX;
@@ -59,7 +60,7 @@ create_matrix(double* &matrix, long long razm, int rank)
 
 
 void
-create_S_T(double** matrices, int busy_side, int rank, int N, int* razm, double* S, double* res, double* tensor)
+create_S_T(std::complex<double>** matrices, int busy_side, int rank, int N, int* razm, std::complex<double>* S, std::complex<double>* res, std::complex<double>* tensor)
 {
     
 
@@ -89,7 +90,7 @@ create_S_T(double** matrices, int busy_side, int rank, int N, int* razm, double*
     }
 
     long long count = 0, tensor_val = 0;
-    double val;
+    std::complex<double> val;
 
     long long max_r = std::max(rank, razm[busy_side]);
 
@@ -160,9 +161,9 @@ main(void)
     }
     std::cout << "Введите ранг: ";
     std::cin >> rank;
-    double* tensor;
+    std::complex<double>* tensor;
 
-    double** matrices = new double*[N];
+    std::complex<double>** matrices = new std::complex<double>*[N];
 
     for(int i = 0; i < N; i++) {
         create_matrix(matrices[i], razm[i], rank);
@@ -170,11 +171,6 @@ main(void)
 
     // tensor_make_not_random(&tensor, razm, length, N);
     tensor_make(&tensor, length);
-    
-    for(int i = 0; i < N; i++) {
-        delete[] matrices[i];
-        create_matrix(matrices[i], razm[i], rank);
-    }
 
     std::cout << std::endl << std::endl;
 
@@ -182,20 +178,20 @@ main(void)
     int ione = 1;
     int info = 654;
     int lwork = 64 * szfull;
-    double * work = new double[lwork];
+    std::complex<double>* work = new std::complex<double>[lwork];
     char cN = 'N';
     int leftsize;
     int leftsize_trunc;
 
     double right_side_norm;
     double relative_residual = 1.0, end_relative_residual = 2.0;
-    double diffrent = end_relative_residual - relative_residual;
+    double diffrent = abs(end_relative_residual - relative_residual);
 
-    right_side_norm = dnrm2_(&szfull, tensor, &ione);
+    right_side_norm = dznrm2_(&szfull, tensor, &ione);
 
     std::cout << "Right side norm: " << right_side_norm << std::endl;
-    double* S;
-    double* T;
+    std::complex<double>* S;
+    std::complex<double>* T;
     int iteration = 0;
 
 
@@ -206,19 +202,19 @@ main(void)
         iteration++;
 
         for(int i = 0; i < N; i++) {
-            S = new double[length / razm[i] * rank];
-            T = new double[length];
+            S = new std::complex<double>[length / razm[i] * rank];
+            T = new std::complex<double>[length];
             create_S_T(matrices, i, rank, N - 1, razm, S, T, tensor);
             
             leftsize = length / razm[i];
-            dgels_(&cN, &leftsize, &rank, &(razm[i]), S, &leftsize, T, &leftsize, work, &lwork, &info);
+            zgels_(&cN, &leftsize, &rank, &(razm[i]), S, &leftsize, T, &leftsize, work, &lwork, &info);
 
             relative_residual = 0.0;
             leftsize_trunc = leftsize - rank;
 
             for(int k = 0; k < razm[i]; k++)
             {
-                double tmp = dnrm2_(&leftsize_trunc, T + k * leftsize + rank, &ione);
+                double tmp = dznrm2_(&leftsize_trunc, T + k * leftsize + rank, &ione);
 
                 relative_residual += tmp * tmp;
             }
