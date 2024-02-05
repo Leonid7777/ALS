@@ -4,6 +4,7 @@
 #include <cmath>
 #include <complex>
 #include <random>
+#include <map>
 
 
 
@@ -195,14 +196,15 @@ ALS(std::complex<double>* tensor, std::complex<double>** matrices, int N, int ra
 
 
 
-    while(diffrent  > 1.0e-11 && iteration < 100000)
+    while(diffrent  > 1.0e-9 && iteration < 100000)
     {
         end_relative_residual = relative_residual;
         iteration++;
 
         for(int i = 0; i < N; i++) {
+            
             S = new std::complex<double>[length / razm[i] * rank];
-            // T = new std::complex<double>[length];
+
             create_S_T(matrices, i, rank, N - 1, razm, S, T, tensor);
             
             leftsize = length / razm[i];
@@ -226,14 +228,12 @@ ALS(std::complex<double>* tensor, std::complex<double>** matrices, int N, int ra
             }
 
             delete[] S;
-            // delete[] T;
 
         }
         diffrent = end_relative_residual - relative_residual;
         if(iteration % 1000 == 0) {
             std::cout << diffrent << std::endl;
         }
-        std::cout << "diffrent: " << diffrent << std::endl;
     }
 
     std::cout << "iteration: " << iteration << std::endl; 
@@ -243,11 +243,6 @@ ALS(std::complex<double>* tensor, std::complex<double>** matrices, int N, int ra
 
     return relative_residual;
 }
-
-
-
-
-
 
 
 void
@@ -303,7 +298,22 @@ create_ALS_tensor(std::complex<double>** matrices, int rank, int N, int* razm, s
     delete[] mas;
 }
 
+void
+create_random_tensor(std::complex<double>* tensor, std::map<int, std::complex<double>>* rand_ten, int length, int len_rand_ten)
+{
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> distrib(0, length);
+    int count = 0;
 
+    while (count < len_rand_ten) {
+        int num = distrib(gen);  
+        if ((*rand_ten).find(num) == (*rand_ten).end()) {  
+            (*rand_ten)[count] = tensor[num];
+            count++;
+        }
+    }
+}
 
 
 
@@ -314,7 +324,7 @@ main(void)
     std::srand(std::time(nullptr));
     int N, rank, R;
     int length = 1;
-    double right_side_norm, noise;
+    double right_side_norm, noise, pro_inc_it;
     std::cout << "Введите количество размерностей тензора: ";
     std::cin >> N;
 
@@ -334,8 +344,14 @@ main(void)
     std::cout << "Введите ранг: ";
     std::cin >> rank;
 
+    std::cout << "Введите долю полученных элементов: ";
+    std::cin >> pro_inc_it;
+
     std::complex<double>* tensor;
     std::complex<double>** matrices = new std::complex<double>*[N];
+    std::map<int, std::complex<double>> rand_ten;
+
+    int len_rand_ten = length * pro_inc_it;
 
 
     std::complex<double>* end_tensor;
@@ -345,6 +361,8 @@ main(void)
     }
 
     tensor_make_not_random(&tensor, razm, length, N, R, right_side_norm, noise, &end_tensor);
+
+    create_random_tensor(tensor, &rand_ten, length, len_rand_ten);
 
     std::cout << std::endl << std::endl;
 
